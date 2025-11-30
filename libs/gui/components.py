@@ -296,6 +296,11 @@ class GUIComponents:
             df_hist = pd.DataFrame(all_history)
             cols = ['symbol', 'orderId', 'price', 'origQty', 'executedQty', 'side', 'type', 'status', 'time']
             cols = [c for c in cols if c in df_hist.columns]
+            
+            # Convert timestamp to human-readable format
+            if 'time' in df_hist.columns:
+                df_hist['time'] = pd.to_datetime(df_hist['time'], unit='ms').dt.strftime('%Y-%m-%d %H:%M:%S')
+            
             st.dataframe(df_hist[cols].sort_values(by='time', ascending=False))
         else:
             st.write("No order history found.")
