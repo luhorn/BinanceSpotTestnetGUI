@@ -1,0 +1,344 @@
+"""
+GUI Handlers Module
+
+This module contains all the handler functions for GUI actions (button presses, form submissions).
+These are separated from the GUI components to allow for clear separation of concerns.
+"""
+
+import time
+import streamlit as st
+from libs.exchange import BinanceClient
+from libs.exchange.client import BinanceClientError
+
+
+class GUIHandlers:
+    """
+    Handler class for all GUI actions.
+    
+    This class provides methods that are called when users interact with the GUI.
+    Each method handles a specific action like placing orders, canceling orders, etc.
+    """
+    
+    def __init__(self, client: BinanceClient):
+        """
+        Initialize handlers with a Binance client.
+        
+        Args:
+            client: BinanceClient instance for API operations
+        """
+        self.client = client
+    
+    # ========== Logging ==========
+    
+    @staticmethod
+    def add_log(message: str, level: str = "info"):
+        """
+        Add a message to the activity log.
+        
+        Args:
+            message: Log message
+            level: Log level ('info', 'success', 'error', 'warning')
+        """
+        if "activity_log" not in st.session_state:
+            st.session_state.activity_log = []
+        
+        st.session_state.activity_log.insert(0, {
+            "msg": message, 
+            "level": level, 
+            "time": time.strftime("%H:%M:%S")
+        })
+    
+    # ========== Data Refresh ==========
+    
+    @staticmethod
+    def refresh_data():
+        """Clear cached data and trigger a rerun."""
+        # Clear streamlit cache for data functions
+        st.cache_data.clear()
+        st.rerun()
+    
+    # ========== Order Handlers ==========
+    
+    def handle_buy_order(self, symbol: str, order_type: str, quantity: float, 
+                         total_usdt: float, price: float) -> bool:
+        """
+        Handle a buy order submission.
+        
+        Args:
+            symbol: Trading pair symbol
+            order_type: 'LIMIT' or 'MARKET'
+            quantity: Quantity in base asset (0 to use total_usdt)
+            total_usdt: Total order value in USDT (used if quantity is 0)
+            price: Limit price (ignored for MARKET orders)
+            
+        Returns:
+            True if order was placed successfully
+        """
+        try:
+            qty_to_log = 0
+            
+            if quantity > 0:
+                adjusted_qty = self.client.adjust_quantity(symbol, quantity)
+                self.client.place_order(
+                    symbol=symbol,
+                    side="BUY",
+                    order_type=order_type,
+                    quantity=adjusted_qty,
+                    price=price if order_type == "LIMIT" else None
+                )
+                qty_to_log = adjusted_qty
+                
+            elif total_usdt > 0:
+                if order_type == "MARKET":
+                    self.client.place_order(
+                        symbol=symbol,
+                        side="BUY",
+                        order_type=order_type,
+                        quote_order_qty=total_usdt
+                    )
+                    qty_to_log = f"{total_usdt} USDT"
+                else:
+                    # LIMIT: Calculate quantity from total
+                    if price <= 0:
+                        self.add_log("Buy Failed: Price must be > 0 to calculate quantity from total.", "error")
+                        return False
+                    
+                    calc_qty = total_usdt / price
+                    adjusted_qty = self.client.adjust_quantity(symbol, calc_qty)
+                    self.client.place_order(
+                        symbol=symbol,
+                        side="BUY",
+                        order_type=order_type,
+                        quantity=adjusted_qty,
+                        price=price
+                    )
+                    qty_to_log = adjusted_qty
+            else:
+                self.add_log("Buy Failed: Please enter Quantity or Total (USDT).", "error")
+                return False
+            
+            self.add_log(f"Buy Order Placed: {symbol}, Qty: {qty_to_log}", "success")
+            return True
+            
+        except BinanceClientError as e:
+            if e.is_notional_error():
+                self.add_log("Buy Failed: Order value too small (min ~10 USDT).", "error")
+            else:
+                self.add_log(f"Buy Order Failed: {e}", "error")
+            return False
+    
+    def handle_sell_order(self, symbol: str, order_type: str, quantity: float, 
+                          price: float, current_price: float) -> bool:
+        """
+        Handle a sell order submission.
+        
+        Args:
+            symbol: Trading pair symbol
+            order_type: 'LIMIT' or 'MARKET'
+            quantity: Quantity to sell
+            price: Limit price (ignored for MARKET orders)
+            current_price: Current market price (for value estimation)
+            
+        Returns:
+            True if order was placed successfully
+        """
+        # Check estimated value
+        if order_type == "LIMIT":
+            estimated_value = quantity * price
+        else:
+            estimated_value = quantity * current_price
+        
+        if estimated_value < 10.0:
+            self.add_log(f"Sell Failed: Order value {estimated_value:.2f} USDT is too small (min ~10 USDT).", "error")
+            return False
+        
+        try:
+            adjusted_qty = self.client.adjust_quantity(symbol, quantity)
+            self.client.place_order(
+                symbol=symbol,
+                side="SELL",
+                order_type=order_type,
+                quantity=adjusted_qty,
+                price=price if order_type == "LIMIT" else None
+            )
+            self.add_log(f"Sell Order Placed: {symbol}, Qty: {adjusted_qty}", "success")
+            return True
+            
+        except BinanceClientError as e:
+            if e.is_notional_error():
+                self.add_log("Sell Failed: Order value too small (min ~10 USDT).", "error")
+            elif e.is_lot_size_error():
+                self.add_log(f"Sell Failed: Quantity {quantity} invalid for LOT_SIZE filter.", "error")
+            else:
+                self.add_log(f"Sell Order Failed: {e}", "error")
+            return False
+    
+    def handle_cancel_order(self, symbol: str, order_id: str) -> bool:
+        """
+        Handle order cancellation.
+        
+        Args:
+            symbol: Trading pair symbol
+            order_id: Order ID to cancel
+            
+        Returns:
+            True if cancellation was successful
+        """
+        if not order_id or not symbol:
+            self.add_log("Cancel Failed: Order ID and Symbol are required.", "error")
+            return False
+        
+        try:
+            self.client.cancel_order(symbol=symbol, order_id=order_id)
+            self.add_log(f"Order {order_id} cancelled", "success")
+            return True
+        except BinanceClientError as e:
+            self.add_log(f"Cancel Failed: {e}", "error")
+            return False
+    
+    # ========== Portfolio Reset Handler ==========
+    
+    def handle_portfolio_reset(self, status_callback=None) -> bool:
+        """
+        Handle full portfolio reset (cancel all orders, sell all assets).
+        
+        Args:
+            status_callback: Optional callback function for status updates
+                            (receives message string)
+            
+        Returns:
+            True if reset completed successfully
+        """
+        def update_status(msg):
+            if status_callback:
+                status_callback(msg)
+        
+        self.add_log("Starting Portfolio Reset...", "warning")
+        
+        try:
+            # 1. Cancel all open orders
+            update_status("Cancelling open orders...")
+            open_orders = self.client.get_open_orders()
+            if open_orders:
+                for order in open_orders:
+                    self.client.cancel_order(symbol=order['symbol'], order_id=order['orderId'])
+                self.add_log(f"Cancelled {len(open_orders)} open orders.", "success")
+            else:
+                self.add_log("No open orders to cancel.", "info")
+            
+            # 2. Analyze and sell assets
+            update_status("Analyzing assets...")
+            prices = self.client.get_all_prices()
+            balances = self.client.get_balances(non_zero_only=True)
+            
+            sellable_assets = []
+            dust_assets = []
+            
+            for b in balances:
+                asset_name = b['asset']
+                free_amt = float(b['free'])
+                
+                if asset_name != 'USDT' and free_amt > 0:
+                    pair = f"{asset_name}USDT"
+                    if pair in prices:
+                        price = prices[pair]
+                        value = free_amt * price
+                        if value >= 10.0:
+                            sellable_assets.append((asset_name, free_amt, pair))
+                        else:
+                            dust_assets.append((asset_name, free_amt, pair))
+            
+            # Pass 1: Sell Sellable Assets
+            if sellable_assets:
+                update_status(f"Selling {len(sellable_assets)} major assets...")
+                for asset_name, free_amt, pair in sellable_assets:
+                    try:
+                        qty_to_sell = self.client.adjust_quantity(pair, free_amt)
+                        if qty_to_sell > 0:
+                            self.client.place_order(
+                                symbol=pair, 
+                                side='SELL', 
+                                order_type='MARKET', 
+                                quantity=qty_to_sell
+                            )
+                            self.add_log(f"Sold {qty_to_sell} {asset_name}", "success")
+                    except BinanceClientError as e:
+                        self.add_log(f"Failed to sell {asset_name}: {e}", "error")
+            
+            # Pass 2: Sweep Dust
+            if dust_assets:
+                update_status(f"Sweeping {len(dust_assets)} dust assets...")
+                self.add_log(f"Found {len(dust_assets)} dust assets. Attempting to sweep...", "info")
+                
+                # Get fresh USDT balance
+                account = self.client.get_account_info()
+                usdt_balance = 0.0
+                for b in account['balances']:
+                    if b['asset'] == 'USDT':
+                        usdt_balance = float(b['free'])
+                        break
+                
+                for i, (asset_name, free_amt, pair) in enumerate(dust_assets):
+                    update_status(f"Sweeping {asset_name} ({i+1}/{len(dust_assets)})...")
+                    
+                    if usdt_balance < 11.0:
+                        self.add_log(f"Skipping dust sweep for {asset_name}: Insufficient USDT ({usdt_balance:.2f} < 11.0)", "warning")
+                        continue
+                    
+                    try:
+                        # Buy 11 USDT worth
+                        self.client.place_order(
+                            symbol=pair, 
+                            side='BUY', 
+                            order_type='MARKET', 
+                            quote_order_qty=11.0
+                        )
+                        self.add_log(f"Bought ~11 USDT of {asset_name} to enable sell.", "info")
+                        
+                        time.sleep(0.5)
+                        
+                        # Get new balance
+                        sub_acc = self.client.get_account_info()
+                        new_bal = 0.0
+                        for b in sub_acc['balances']:
+                            if b['asset'] == asset_name:
+                                new_bal = float(b['free'])
+                                break
+                        
+                        # Sell everything
+                        qty_to_sell = self.client.adjust_quantity(pair, new_bal)
+                        if qty_to_sell > 0:
+                            self.client.place_order(
+                                symbol=pair, 
+                                side='SELL', 
+                                order_type='MARKET', 
+                                quantity=qty_to_sell
+                            )
+                            self.add_log(f"Swept dust: Sold {qty_to_sell} {asset_name}", "success")
+                        else:
+                            self.add_log(f"Failed to sweep {asset_name}: Adjusted quantity is 0.", "error")
+                    
+                    except BinanceClientError as e:
+                        self.add_log(f"Failed to sweep {asset_name}: {e}", "error")
+            
+            self.add_log("Portfolio Reset Complete.", "success")
+            return True
+            
+        except BinanceClientError as e:
+            self.add_log(f"Error during reset: {e}", "error")
+            return False
+    
+    # ========== Asset Selection Handler ==========
+    
+    def handle_asset_selection(self, selected_asset: str, all_symbols: list[str]):
+        """
+        Handle asset selection from the assets table.
+        
+        Args:
+            selected_asset: The selected asset name
+            all_symbols: List of all available trading symbols
+        """
+        potential_pair = f"{selected_asset}USDT"
+        if potential_pair in all_symbols:
+            st.session_state["symbol_select"] = potential_pair
+            st.rerun()
