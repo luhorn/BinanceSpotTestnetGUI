@@ -47,7 +47,8 @@ class GUIHandlers:
             qty_to_log = 0
             
             if quantity > 0:
-                adjusted_qty = self.client.adjust_quantity(symbol, quantity)
+                is_market = order_type == "MARKET"
+                adjusted_qty = self.client.adjust_quantity(symbol, quantity, is_market_order=is_market)
                 self.client.place_order(
                     symbol=symbol,
                     side="BUY",
@@ -110,7 +111,8 @@ class GUIHandlers:
             return False
         
         try:
-            adjusted_qty = self.client.adjust_quantity(symbol, quantity)
+            is_market = order_type == "MARKET"
+            adjusted_qty = self.client.adjust_quantity(symbol, quantity, is_market_order=is_market)
             self.client.place_order(
                 symbol=symbol,
                 side="SELL",
@@ -171,6 +173,7 @@ class GUIHandlers:
             
             sellable_assets = []
             dust_assets = []
+            no_pair_assets = []
             
             for b in balances:
                 asset_name = b['asset']
@@ -185,23 +188,72 @@ class GUIHandlers:
                             sellable_assets.append((asset_name, free_amt, pair))
                         else:
                             dust_assets.append((asset_name, free_amt, pair))
+                    else:
+                        # No USDT trading pair available
+                        no_pair_assets.append(asset_name)
+            
+            # Log assets without trading pairs
+            if no_pair_assets:
+                self.add_log(f"Skipping {len(no_pair_assets)} assets without USDT pairs: {', '.join(no_pair_assets)}", "info")
             
             # Pass 1: Sell Sellable Assets
             if sellable_assets:
                 update_status(f"Selling {len(sellable_assets)} major assets...")
                 for asset_name, free_amt, pair in sellable_assets:
                     try:
-                        qty_to_sell = self.client.adjust_quantity(pair, free_amt)
-                        if qty_to_sell > 0:
-                            self.client.place_order(
+                        min_qty = self.client.get_min_market_lot_size(pair)
+                        max_qty = self.client.get_max_market_lot_size(pair)
+                        
+                        remaining = free_amt
+                        total_sold = 0.0
+                        
+                        # Sell in batches if quantity exceeds max
+                        while remaining > 0:
+                            qty_to_sell = self.client.adjust_quantity(pair, remaining, is_market_order=True)
+                            
+                            if qty_to_sell <= 0 or qty_to_sell < min_qty:
+                                # Remaining quantity below minimum - treat as dust
+                                if total_sold == 0:
+                                    self.add_log(f"Cannot sell {asset_name}: qty {free_amt} below min {min_qty}. Moving to dust.", "warning")
+                                    dust_assets.append((asset_name, remaining, pair))
+                                else:
+                                    self.add_log(f"Remaining {remaining} {asset_name} is dust.", "info")
+                                    dust_assets.append((asset_name, remaining, pair))
+                                break
+                            
+                            result = self.client.place_order(
                                 symbol=pair, 
                                 side='SELL', 
                                 order_type='MARKET', 
                                 quantity=qty_to_sell
                             )
-                            self.add_log(f"Sold {qty_to_sell} {asset_name}", "success")
+                            
+                            # Check if order was filled or expired (no liquidity)
+                            status = result.get('status', '')
+                            executed_qty = float(result.get('executedQty', 0))
+                            
+                            if status == 'EXPIRED' or executed_qty == 0:
+                                self.add_log(f"Cannot sell {asset_name}: No liquidity on testnet.", "warning")
+                                break  # No point retrying, no buyers
+                            
+                            total_sold += executed_qty
+                            remaining -= executed_qty
+                            self.add_log(f"Sold {executed_qty} {asset_name}", "success")
+                            
+                            # Small delay between batch sells
+                            if remaining > 0 and remaining >= min_qty:
+                                time.sleep(0.3)
+                            else:
+                                if remaining > 0:
+                                    dust_assets.append((asset_name, remaining, pair))
+                                break
+                        
                     except BinanceClientError as e:
-                        self.add_log(f"Failed to sell {asset_name}: {e}", "error")
+                        if e.is_market_lot_size_error() or e.is_lot_size_error():
+                            self.add_log(f"Cannot sell {asset_name}: lot size error. Moving to dust.", "warning")
+                            dust_assets.append((asset_name, free_amt, pair))
+                        else:
+                            self.add_log(f"Failed to sell {asset_name}: {e}", "error")
             
             # Pass 2: Sweep Dust
             if dust_assets:
@@ -225,12 +277,18 @@ class GUIHandlers:
                     
                     try:
                         # Buy 11 USDT worth
-                        self.client.place_order(
+                        buy_result = self.client.place_order(
                             symbol=pair, 
                             side='BUY', 
                             order_type='MARKET', 
                             quote_order_qty=11.0
                         )
+                        
+                        # Check if buy was filled
+                        if buy_result.get('status') == 'EXPIRED' or float(buy_result.get('executedQty', 0)) == 0:
+                            self.add_log(f"Skipping {asset_name}: No liquidity on testnet.", "warning")
+                            continue
+                        
                         self.add_log(f"Bought ~11 USDT of {asset_name} to enable sell.", "info")
                         
                         time.sleep(0.5)
@@ -244,20 +302,30 @@ class GUIHandlers:
                                 break
                         
                         # Sell everything
-                        qty_to_sell = self.client.adjust_quantity(pair, new_bal)
+                        qty_to_sell = self.client.adjust_quantity(pair, new_bal, is_market_order=True)
                         if qty_to_sell > 0:
-                            self.client.place_order(
+                            sell_result = self.client.place_order(
                                 symbol=pair, 
                                 side='SELL', 
                                 order_type='MARKET', 
                                 quantity=qty_to_sell
                             )
-                            self.add_log(f"Swept dust: Sold {qty_to_sell} {asset_name}", "success")
+                            
+                            if sell_result.get('status') == 'EXPIRED' or float(sell_result.get('executedQty', 0)) == 0:
+                                self.add_log(f"Failed to sell {asset_name}: No liquidity for sell.", "warning")
+                            else:
+                                executed = float(sell_result.get('executedQty', 0))
+                                self.add_log(f"Swept dust: Sold {executed} {asset_name}", "success")
                         else:
                             self.add_log(f"Failed to sweep {asset_name}: Adjusted quantity is 0.", "error")
                     
                     except BinanceClientError as e:
-                        self.add_log(f"Failed to sweep {asset_name}: {e}", "error")
+                        if e.is_liquidity_error():
+                            self.add_log(f"Skipping {asset_name}: Testnet has insufficient liquidity.", "warning")
+                        elif e.is_market_lot_size_error() or e.is_lot_size_error():
+                            self.add_log(f"Skipping {asset_name}: Quantity below minimum lot size.", "warning")
+                        else:
+                            self.add_log(f"Failed to sweep {asset_name}: {e}", "error")
             
             self.add_log("Portfolio Reset Complete.", "success")
             return True

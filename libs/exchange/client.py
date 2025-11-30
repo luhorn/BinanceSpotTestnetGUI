@@ -93,33 +93,93 @@ class BinanceClient:
         return None
     
 
-    def adjust_quantity(self, symbol: str, quantity: float) -> float:
+    def adjust_quantity(self, symbol: str, quantity: float, is_market_order: bool = False) -> float:
         filters = self.get_symbol_filters(symbol)
         if not filters:
             return quantity
         
-        if 'LOT_SIZE' not in filters:
-            return quantity
+        # For market orders, we need to respect BOTH:
+        # - LOT_SIZE for step size (always applies)
+        # - MARKET_LOT_SIZE for min/max (if available)
         
-        step_size = float(filters['LOT_SIZE']['stepSize'])
-        if step_size <= 0:
-            return quantity
+        # Get step size from LOT_SIZE (always required)
+        lot_filter = filters.get('LOT_SIZE', {})
+        step_size = float(lot_filter.get('stepSize', 0))
         
-        # Use Decimal for precision
-        q = Decimal(str(quantity))
-        s = Decimal(str(step_size))
-        
-        # Floor division to nearest step
-        adjusted_q = (q // s) * s
-        
-        # Determine precision from step_size
-        s_str = f"{step_size:.8f}".rstrip('0')
-        if '.' in s_str:
-            precision = len(s_str.split('.')[1])
+        # Get min/max from appropriate filter
+        if is_market_order and 'MARKET_LOT_SIZE' in filters:
+            market_filter = filters['MARKET_LOT_SIZE']
+            min_qty = float(market_filter.get('minQty', 0))
+            max_qty = float(market_filter.get('maxQty', 0))
+            # If MARKET_LOT_SIZE max is 0, fall back to LOT_SIZE
+            if max_qty == 0:
+                max_qty = float(lot_filter.get('maxQty', float('inf')))
         else:
-            precision = 0
+            min_qty = float(lot_filter.get('minQty', 0))
+            max_qty = float(lot_filter.get('maxQty', float('inf')))
         
-        return float(f"{adjusted_q:.{precision}f}")
+        result = quantity
+        
+        # First clamp to max (before step adjustment to avoid precision issues)
+        if max_qty > 0 and result > max_qty:
+            result = max_qty
+        
+        # Apply step size adjustment if step_size > 0
+        if step_size > 0:
+            # Use Decimal for precision
+            q = Decimal(str(result))
+            s = Decimal(str(step_size))
+            
+            # Floor division to nearest step
+            adjusted_q = (q // s) * s
+            
+            # Determine precision from step_size
+            s_str = f"{step_size:.8f}".rstrip('0')
+            if '.' in s_str:
+                precision = len(s_str.split('.')[1])
+            else:
+                precision = 0
+            
+            result = float(f"{adjusted_q:.{precision}f}")
+        
+        # Check min after step adjustment
+        if result < min_qty:
+            return 0.0  # Return 0 if below minimum (caller should handle this)
+        
+        return result
+    
+
+    def get_min_market_lot_size(self, symbol: str) -> float:
+        """Get the minimum quantity for market orders."""
+        filters = self.get_symbol_filters(symbol)
+        if not filters:
+            return 0.0
+        
+        if 'MARKET_LOT_SIZE' in filters:
+            return float(filters['MARKET_LOT_SIZE'].get('minQty', 0))
+        elif 'LOT_SIZE' in filters:
+            return float(filters['LOT_SIZE'].get('minQty', 0))
+        
+        return 0.0
+    
+
+    def get_max_market_lot_size(self, symbol: str) -> float:
+        """Get the maximum quantity for market orders."""
+        filters = self.get_symbol_filters(symbol)
+        if not filters:
+            return float('inf')
+        
+        if 'MARKET_LOT_SIZE' in filters:
+            max_qty = float(filters['MARKET_LOT_SIZE'].get('maxQty', 0))
+            if max_qty > 0:
+                return max_qty
+        
+        if 'LOT_SIZE' in filters:
+            max_qty = float(filters['LOT_SIZE'].get('maxQty', 0))
+            if max_qty > 0:
+                return max_qty
+        
+        return float('inf')
     
 
     # ========== Order Operations ==========
@@ -149,8 +209,8 @@ class BinanceClient:
         }
         
         if quantity is not None:
-            # Adjust quantity for LOT_SIZE
-            params["quantity"] = self.adjust_quantity(symbol, quantity)
+            # Quantity should already be adjusted by caller
+            params["quantity"] = quantity
         elif quote_order_qty is not None:
             params["quoteOrderQty"] = quote_order_qty
         
@@ -232,3 +292,11 @@ class BinanceClientError(Exception):
     
     def is_lot_size_error(self) -> bool:
         return self.error_code == -1013 and self.error_message and "LOT_SIZE" in self.error_message
+    
+    
+    def is_market_lot_size_error(self) -> bool:
+        return self.error_code == -1013 and self.error_message and "MARKET_LOT_SIZE" in self.error_message
+    
+    
+    def is_liquidity_error(self) -> bool:
+        return self.error_code == -2010 and self.error_message and "liquidity" in self.error_message.lower()
