@@ -15,7 +15,7 @@ class GUIComponents:
         self.handlers = handlers
         self._log_placeholder = None
     
-    
+
     # ========== Utility Functions ==========
     
     @staticmethod
@@ -54,7 +54,17 @@ class GUIComponents:
             st.info("No assets found.")
             return None
         
+        # Filter option for small value assets
+        hide_small = st.checkbox("Hide assets < 10 USDT", value=False, key="hide_small_assets")
+        
         df_assets = pd.DataFrame(asset_data)
+        
+        # Apply filter if checkbox is checked
+        if hide_small:
+            df_assets = df_assets[df_assets["Value (USDT)"] >= 10.0]
+            if df_assets.empty:
+                st.info("No assets with value >= 10 USDT found.")
+                return None
         
         # Format columns for display
         df_display = df_assets.copy()
@@ -65,7 +75,7 @@ class GUIComponents:
             df_display, 
             on_select="rerun", 
             selection_mode="single-row",
-            use_container_width=True
+            width="stretch"
         )
         
         if event.selection.rows:
@@ -304,10 +314,25 @@ class GUIComponents:
         
         if st.sidebar.button("RESET PORTFOLIO (SELL ALL)", disabled=not confirm_reset):
             with st.sidebar.status("Resetting Portfolio...", expanded=True) as status:
+                log_container = st.container()
+                
                 def status_callback(msg):
                     st.write(msg)
                 
-                success = self.handlers.handle_portfolio_reset(status_callback)
+                def log_callback(msg, level):
+                    """Display log messages live within the status widget."""
+                    with log_container:
+                        formatted_msg = f"• {msg}"
+                        if level == 'success':
+                            st.success(formatted_msg)
+                        elif level == 'error':
+                            st.error(formatted_msg)
+                        elif level == 'warning':
+                            st.warning(formatted_msg)
+                        else:
+                            st.info(formatted_msg)
+                
+                success = self.handlers.handle_portfolio_reset(status_callback, log_callback)
                 
                 if success:
                     status.update(label="Reset Complete!", state="complete", expanded=False)

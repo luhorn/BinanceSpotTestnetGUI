@@ -15,7 +15,7 @@ class GUIHandlers:
     def __init__(self, client: BinanceClient):
         self.client = client
     
-    
+
     # ========== Logging ==========
     
     @staticmethod
@@ -146,12 +146,18 @@ class GUIHandlers:
 
     # ========== Portfolio Reset Handler ==========
     
-    def handle_portfolio_reset(self, status_callback=None) -> bool:
+    def handle_portfolio_reset(self, status_callback=None, log_callback=None) -> bool:
         def update_status(msg):
             if status_callback:
                 status_callback(msg)
         
-        self.add_log("Starting Portfolio Reset...", "warning")
+        def log_and_display(message: str, level: str = "info"):
+            """Add to session log and display live if callback provided."""
+            self.add_log(message, level)
+            if log_callback:
+                log_callback(message, level)
+        
+        log_and_display("Starting Portfolio Reset...", "warning")
         
         try:
             # 1. Cancel all open orders
@@ -160,9 +166,9 @@ class GUIHandlers:
             if open_orders:
                 for order in open_orders:
                     self.client.cancel_order(symbol=order['symbol'], order_id=order['orderId'])
-                self.add_log(f"Cancelled {len(open_orders)} open orders.", "success")
+                log_and_display(f"Cancelled {len(open_orders)} open orders.", "success")
             else:
-                self.add_log("No open orders to cancel.", "info")
+                log_and_display("No open orders to cancel.", "info")
             
             # 2. Analyze and sell assets
             update_status("Analyzing assets...")
@@ -199,14 +205,14 @@ class GUIHandlers:
                                 order_type='MARKET', 
                                 quantity=qty_to_sell
                             )
-                            self.add_log(f"Sold {qty_to_sell} {asset_name}", "success")
+                            log_and_display(f"Sold {qty_to_sell} {asset_name}", "success")
                     except BinanceClientError as e:
-                        self.add_log(f"Failed to sell {asset_name}: {e}", "error")
+                        log_and_display(f"Failed to sell {asset_name}: {e}", "error")
             
             # Pass 2: Sweep Dust
             if dust_assets:
                 update_status(f"Sweeping {len(dust_assets)} dust assets...")
-                self.add_log(f"Found {len(dust_assets)} dust assets. Attempting to sweep...", "info")
+                log_and_display(f"Found {len(dust_assets)} dust assets. Attempting to sweep...", "info")
                 
                 # Get fresh USDT balance
                 account = self.client.get_account_info()
@@ -220,7 +226,7 @@ class GUIHandlers:
                     update_status(f"Sweeping {asset_name} ({i+1}/{len(dust_assets)})...")
                     
                     if usdt_balance < 11.0:
-                        self.add_log(f"Skipping dust sweep for {asset_name}: Insufficient USDT ({usdt_balance:.2f} < 11.0)", "warning")
+                        log_and_display(f"Skipping dust sweep for {asset_name}: Insufficient USDT ({usdt_balance:.2f} < 11.0)", "warning")
                         continue
                     
                     try:
@@ -231,7 +237,7 @@ class GUIHandlers:
                             order_type='MARKET', 
                             quote_order_qty=11.0
                         )
-                        self.add_log(f"Bought ~11 USDT of {asset_name} to enable sell.", "info")
+                        log_and_display(f"Bought ~11 USDT of {asset_name} to enable sell.", "info")
                         
                         time.sleep(0.5)
                         
@@ -252,18 +258,18 @@ class GUIHandlers:
                                 order_type='MARKET', 
                                 quantity=qty_to_sell
                             )
-                            self.add_log(f"Swept dust: Sold {qty_to_sell} {asset_name}", "success")
+                            log_and_display(f"Swept dust: Sold {qty_to_sell} {asset_name}", "success")
                         else:
-                            self.add_log(f"Failed to sweep {asset_name}: Adjusted quantity is 0.", "error")
+                            log_and_display(f"Failed to sweep {asset_name}: Adjusted quantity is 0.", "error")
                     
                     except BinanceClientError as e:
-                        self.add_log(f"Failed to sweep {asset_name}: {e}", "error")
+                        log_and_display(f"Failed to sweep {asset_name}: {e}", "error")
             
-            self.add_log("Portfolio Reset Complete.", "success")
+            log_and_display("Portfolio Reset Complete.", "success")
             return True
             
         except BinanceClientError as e:
-            self.add_log(f"Error during reset: {e}", "error")
+            log_and_display(f"Error during reset: {e}", "error")
             return False
     
 
