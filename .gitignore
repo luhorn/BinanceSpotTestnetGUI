@@ -1,3 +1,7 @@
+# user specific files
+resources/secrets.json
+
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
