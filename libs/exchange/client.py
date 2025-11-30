@@ -17,27 +17,9 @@ def load_secrets(path: str = 'resources/secrets.json') -> dict:
 
 
 class BinanceClient:
-    """
-    Wrapper class for Binance Spot Testnet API operations.
-    
-    Handles all exchange-related functionality including:
-    - Account information
-    - Price data
-    - Order management
-    - Exchange info and filters
-    """
-    
     BASE_URL = 'https://testnet.binance.vision'
     
     def __init__(self, api_key: str = None, api_secret: str = None, secrets_path: str = 'resources/secrets.json'):
-        """
-        Initialize the Binance client.
-        
-        Args:
-            api_key: Binance API key (optional, will load from secrets if not provided)
-            api_secret: Binance API secret (optional, will load from secrets if not provided)
-            secrets_path: Path to secrets.json file
-        """
         if api_key is None or api_secret is None:
             secrets = load_secrets(secrets_path)
             api_key = secrets.get("api_key_binance_spot_testnet")
@@ -50,30 +32,17 @@ class BinanceClient:
         )
         self._exchange_info_cache = None
     
+
     # ========== Account Operations ==========
     
     def get_account_info(self) -> dict | None:
-        """
-        Get account information including balances.
-        
-        Returns:
-            Account info dict or None on error
-        """
         try:
             return self._client.account()
         except ClientError as e:
             raise BinanceClientError(f"Error fetching account info: {e}")
     
+
     def get_balances(self, non_zero_only: bool = True) -> list[dict]:
-        """
-        Get account balances.
-        
-        Args:
-            non_zero_only: If True, only return assets with non-zero balance
-            
-        Returns:
-            List of balance dictionaries
-        """
         account = self.get_account_info()
         if not account:
             return []
@@ -84,46 +53,24 @@ class BinanceClient:
         
         return balances
     
+
     # ========== Price Operations ==========
     
     def get_all_prices(self) -> dict[str, float]:
-        """
-        Get current prices for all trading pairs.
-        
-        Returns:
-            Dictionary mapping symbol to price
-        """
         try:
             ticker = self._client.ticker_price()
             return {t['symbol']: float(t['price']) for t in ticker}
         except ClientError as e:
             raise BinanceClientError(f"Error fetching prices: {e}")
     
+
     def get_price(self, symbol: str) -> float:
-        """
-        Get current price for a specific symbol.
-        
-        Args:
-            symbol: Trading pair symbol (e.g., 'BTCUSDT')
-            
-        Returns:
-            Current price
-        """
         prices = self.get_all_prices()
         return prices.get(symbol, 0.0)
     
     # ========== Exchange Info ==========
     
     def get_exchange_info(self, use_cache: bool = True) -> dict:
-        """
-        Get exchange information including trading rules.
-        
-        Args:
-            use_cache: If True, use cached data if available
-            
-        Returns:
-            Exchange info dictionary
-        """
         if use_cache and self._exchange_info_cache:
             return self._exchange_info_cache
         
@@ -133,16 +80,8 @@ class BinanceClient:
         except ClientError as e:
             raise BinanceClientError(f"Error fetching exchange info: {e}")
     
+
     def get_symbol_filters(self, symbol: str) -> dict | None:
-        """
-        Get trading filters for a specific symbol.
-        
-        Args:
-            symbol: Trading pair symbol
-            
-        Returns:
-            Dictionary of filters by filter type, or None if not found
-        """
         info = self.get_exchange_info()
         if not info:
             return None
@@ -153,17 +92,8 @@ class BinanceClient:
         
         return None
     
+
     def adjust_quantity(self, symbol: str, quantity: float) -> float:
-        """
-        Adjust quantity to match LOT_SIZE filter requirements.
-        
-        Args:
-            symbol: Trading pair symbol
-            quantity: Desired quantity
-            
-        Returns:
-            Adjusted quantity that meets LOT_SIZE requirements
-        """
         filters = self.get_symbol_filters(symbol)
         if not filters:
             return quantity
@@ -191,57 +121,27 @@ class BinanceClient:
         
         return float(f"{adjusted_q:.{precision}f}")
     
+
     # ========== Order Operations ==========
     
     def get_open_orders(self, symbol: str = None) -> list[dict]:
-        """
-        Get open orders.
-        
-        Args:
-            symbol: Optional symbol to filter by
-            
-        Returns:
-            List of open orders
-        """
         try:
             return self._client.get_open_orders(symbol=symbol)
         except ClientError as e:
             raise BinanceClientError(f"Error fetching open orders: {e}")
     
+
     def get_all_orders(self, symbol: str) -> list[dict]:
-        """
-        Get order history for a symbol.
-        
-        Args:
-            symbol: Trading pair symbol
-            
-        Returns:
-            List of orders
-        """
         try:
             return self._client.get_orders(symbol=symbol)
         except ClientError as e:
             # Return empty list on error (can be noisy for invalid symbols)
             return []
     
+
     def place_order(self, symbol: str, side: str, order_type: str, 
                     quantity: float = None, quote_order_qty: float = None,
                     price: float = None, time_in_force: str = "GTC") -> dict:
-        """
-        Place a new order.
-        
-        Args:
-            symbol: Trading pair symbol
-            side: 'BUY' or 'SELL'
-            order_type: 'LIMIT' or 'MARKET'
-            quantity: Order quantity in base asset
-            quote_order_qty: Order quantity in quote asset (for MARKET orders)
-            price: Order price (required for LIMIT orders)
-            time_in_force: Time in force (default: GTC)
-            
-        Returns:
-            Order response dictionary
-        """
         params = {
             "symbol": symbol,
             "side": side,
@@ -263,40 +163,22 @@ class BinanceClient:
         except ClientError as e:
             raise BinanceClientError.from_client_error(e)
     
+
     def cancel_order(self, symbol: str, order_id: str) -> dict:
-        """
-        Cancel an order.
-        
-        Args:
-            symbol: Trading pair symbol
-            order_id: Order ID to cancel
-            
-        Returns:
-            Cancel response dictionary
-        """
         try:
             return self._client.cancel_order(symbol=symbol, orderId=order_id)
         except ClientError as e:
             raise BinanceClientError(f"Cancel failed: {e}")
     
+
     # ========== Utility Methods ==========
     
     def get_all_symbols(self) -> list[str]:
-        """Get sorted list of all trading symbols."""
         prices = self.get_all_prices()
         return sorted(list(prices.keys()))
     
+
     def calculate_portfolio_value(self, balances: list[dict], prices: dict[str, float]) -> tuple[float, float, list[dict]]:
-        """
-        Calculate total portfolio value.
-        
-        Args:
-            balances: List of balance dictionaries
-            prices: Dictionary of symbol prices
-            
-        Returns:
-            Tuple of (usdt_balance, total_portfolio_value, asset_data_list)
-        """
         usdt_balance = 0.0
         portfolio_value = 0.0
         asset_data = []
@@ -327,27 +209,26 @@ class BinanceClient:
         return usdt_balance, portfolio_value, asset_data
 
 
+
 class BinanceClientError(Exception):
-    """Custom exception for Binance client errors."""
-    
     def __init__(self, message: str, error_code: int = None, error_message: str = None):
         super().__init__(message)
         self.error_code = error_code
         self.error_message = error_message
     
+
     @classmethod
     def from_client_error(cls, error: ClientError) -> 'BinanceClientError':
-        """Create from a Binance ClientError."""
         return cls(
             str(error),
             error_code=getattr(error, 'error_code', None),
             error_message=getattr(error, 'error_message', None)
         )
     
+
     def is_notional_error(self) -> bool:
-        """Check if this is a minimum notional error."""
         return self.error_code == -1013 and self.error_message and "NOTIONAL" in self.error_message
     
+    
     def is_lot_size_error(self) -> bool:
-        """Check if this is a LOT_SIZE error."""
         return self.error_code == -1013 and self.error_message and "LOT_SIZE" in self.error_message

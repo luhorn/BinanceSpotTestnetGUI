@@ -11,58 +11,31 @@ from typing import Callable, Optional
 
 
 class GUIComponents:
-    """
-    Component class for all GUI elements.
-    
-    This class provides methods to render different parts of the UI.
-    Each method focuses on layout/display, with callbacks for user actions.
-    """
-    
     def __init__(self, handlers):
-        """
-        Initialize GUI components with handlers.
-        
-        Args:
-            handlers: GUIHandlers instance for action callbacks
-        """
         self.handlers = handlers
         self._log_placeholder = None
+    
     
     # ========== Utility Functions ==========
     
     @staticmethod
     def format_number(value: float) -> str:
-        """
-        Formats a number with . as thousand separator and , as decimal separator.
-        
-        Args:
-            value: Number to format
-            
-        Returns:
-            Formatted string
-        """
         if value is None:
             return "0,00"
         return f"{value:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
     
+
     # ========== Page Setup ==========
     
     @staticmethod
     def setup_page():
-        """Configure the Streamlit page settings."""
         st.set_page_config(page_title="Binance Spot Testnet GUI", layout="wide")
         st.title("Binance Spot Testnet GUI")
     
+
     # ========== Dashboard Components ==========
     
     def render_portfolio_summary(self, usdt_balance: float, portfolio_value: float):
-        """
-        Render the portfolio summary metrics.
-        
-        Args:
-            usdt_balance: USDT balance
-            portfolio_value: Total portfolio value in USDT
-        """
         col1, col2 = st.columns(2)
         with col1:
             st.metric("Cash (USDT)", self.format_number(usdt_balance))
@@ -70,16 +43,6 @@ class GUIComponents:
             st.metric("Total Portfolio Value (USDT)", self.format_number(portfolio_value))
     
     def render_assets_table(self, asset_data: list[dict], all_symbols: list[str]) -> Optional[str]:
-        """
-        Render the assets table with selection capability.
-        
-        Args:
-            asset_data: List of asset dictionaries
-            all_symbols: List of all available trading symbols
-            
-        Returns:
-            Selected asset symbol if any, None otherwise
-        """
         col_head, col_btn = st.columns([6, 1])
         with col_head:
             st.subheader("Assets")
@@ -112,19 +75,10 @@ class GUIComponents:
         
         return None
     
+
     # ========== Trading Components ==========
     
     def render_symbol_selector(self, all_symbols: list[str], prices: dict[str, float]) -> tuple[str, float]:
-        """
-        Render the symbol filter and selector in the sidebar.
-        
-        Args:
-            all_symbols: List of all available trading symbols
-            prices: Dictionary of symbol prices
-            
-        Returns:
-            Tuple of (selected_symbol, current_price)
-        """
         st.sidebar.header("Trade")
         st.sidebar.subheader("Filter Symbols")
         
@@ -166,14 +120,8 @@ class GUIComponents:
         
         return symbol_input, current_price
     
+
     def render_buy_form(self, symbol: str, current_price: float):
-        """
-        Render the buy order form.
-        
-        Args:
-            symbol: Trading pair symbol
-            current_price: Current market price
-        """
         st.write("Buy " + symbol)
         buy_type = st.radio("Order Type", ["LIMIT", "MARKET"], key="buy_type")
         
@@ -214,15 +162,8 @@ class GUIComponents:
             if success:
                 st.rerun()
     
+
     def render_sell_form(self, symbol: str, current_price: float, account: dict):
-        """
-        Render the sell order form.
-        
-        Args:
-            symbol: Trading pair symbol
-            current_price: Current market price
-            account: Account info dictionary
-        """
         st.write("Sell " + symbol)
         
         # Determine available balance for the base asset
@@ -278,15 +219,8 @@ class GUIComponents:
             if success:
                 st.rerun()
     
+
     def render_trading_tabs(self, symbol: str, current_price: float, account: dict):
-        """
-        Render the buy/sell trading tabs in the sidebar.
-        
-        Args:
-            symbol: Trading pair symbol
-            current_price: Current market price
-            account: Account info dictionary
-        """
         if not symbol:
             return
         
@@ -298,15 +232,10 @@ class GUIComponents:
         with tab2:
             self.render_sell_form(symbol, current_price, account)
     
+
     # ========== Order Components ==========
     
     def render_open_orders(self, open_orders: list[dict]):
-        """
-        Render the open orders section.
-        
-        Args:
-            open_orders: List of open order dictionaries
-        """
         st.subheader("Open Orders")
         
         if not open_orders:
@@ -327,17 +256,9 @@ class GUIComponents:
             if success:
                 st.rerun()
     
+
     def render_order_history(self, symbol_input: str, assets: list[dict], 
                              all_symbols: list[str], get_all_orders_func: Callable):
-        """
-        Render the order history section.
-        
-        Args:
-            symbol_input: Currently selected symbol
-            assets: List of asset dictionaries
-            all_symbols: List of all available symbols
-            get_all_orders_func: Function to fetch order history for a symbol
-        """
         st.subheader("Order History")
         
         history_symbols = set()
@@ -369,10 +290,10 @@ class GUIComponents:
         else:
             st.write("No order history found.")
     
+
     # ========== Danger Zone ==========
     
     def render_danger_zone(self):
-        """Render the portfolio reset danger zone in the sidebar."""
         st.sidebar.markdown("---")
         st.sidebar.header("Danger Zone")
         
@@ -396,10 +317,10 @@ class GUIComponents:
                 else:
                     status.update(label="Reset Failed!", state="error")
     
+
     # ========== Activity Log ==========
     
     def render_activity_log(self):
-        """Render the activity log in the sidebar."""
         st.sidebar.markdown("---")
         st.sidebar.subheader("Activity Log")
         
@@ -409,8 +330,8 @@ class GUIComponents:
         
         self._render_log_content()
     
+
     def _render_log_content(self):
-        """Render the log content into the placeholder."""
         if self._log_placeholder is None:
             return
         

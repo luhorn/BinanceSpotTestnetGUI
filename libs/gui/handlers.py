@@ -12,33 +12,14 @@ from libs.exchange.client import BinanceClientError
 
 
 class GUIHandlers:
-    """
-    Handler class for all GUI actions.
-    
-    This class provides methods that are called when users interact with the GUI.
-    Each method handles a specific action like placing orders, canceling orders, etc.
-    """
-    
     def __init__(self, client: BinanceClient):
-        """
-        Initialize handlers with a Binance client.
-        
-        Args:
-            client: BinanceClient instance for API operations
-        """
         self.client = client
+    
     
     # ========== Logging ==========
     
     @staticmethod
     def add_log(message: str, level: str = "info"):
-        """
-        Add a message to the activity log.
-        
-        Args:
-            message: Log message
-            level: Log level ('info', 'success', 'error', 'warning')
-        """
         if "activity_log" not in st.session_state:
             st.session_state.activity_log = []
         
@@ -48,32 +29,20 @@ class GUIHandlers:
             "time": time.strftime("%H:%M:%S")
         })
     
+
     # ========== Data Refresh ==========
     
     @staticmethod
     def refresh_data():
-        """Clear cached data and trigger a rerun."""
         # Clear streamlit cache for data functions
         st.cache_data.clear()
         st.rerun()
     
+
     # ========== Order Handlers ==========
     
     def handle_buy_order(self, symbol: str, order_type: str, quantity: float, 
                          total_usdt: float, price: float) -> bool:
-        """
-        Handle a buy order submission.
-        
-        Args:
-            symbol: Trading pair symbol
-            order_type: 'LIMIT' or 'MARKET'
-            quantity: Quantity in base asset (0 to use total_usdt)
-            total_usdt: Total order value in USDT (used if quantity is 0)
-            price: Limit price (ignored for MARKET orders)
-            
-        Returns:
-            True if order was placed successfully
-        """
         try:
             qty_to_log = 0
             
@@ -127,21 +96,9 @@ class GUIHandlers:
                 self.add_log(f"Buy Order Failed: {e}", "error")
             return False
     
+
     def handle_sell_order(self, symbol: str, order_type: str, quantity: float, 
                           price: float, current_price: float) -> bool:
-        """
-        Handle a sell order submission.
-        
-        Args:
-            symbol: Trading pair symbol
-            order_type: 'LIMIT' or 'MARKET'
-            quantity: Quantity to sell
-            price: Limit price (ignored for MARKET orders)
-            current_price: Current market price (for value estimation)
-            
-        Returns:
-            True if order was placed successfully
-        """
         # Check estimated value
         if order_type == "LIMIT":
             estimated_value = quantity * price
@@ -174,16 +131,6 @@ class GUIHandlers:
             return False
     
     def handle_cancel_order(self, symbol: str, order_id: str) -> bool:
-        """
-        Handle order cancellation.
-        
-        Args:
-            symbol: Trading pair symbol
-            order_id: Order ID to cancel
-            
-        Returns:
-            True if cancellation was successful
-        """
         if not order_id or not symbol:
             self.add_log("Cancel Failed: Order ID and Symbol are required.", "error")
             return False
@@ -196,19 +143,10 @@ class GUIHandlers:
             self.add_log(f"Cancel Failed: {e}", "error")
             return False
     
+
     # ========== Portfolio Reset Handler ==========
     
     def handle_portfolio_reset(self, status_callback=None) -> bool:
-        """
-        Handle full portfolio reset (cancel all orders, sell all assets).
-        
-        Args:
-            status_callback: Optional callback function for status updates
-                            (receives message string)
-            
-        Returns:
-            True if reset completed successfully
-        """
         def update_status(msg):
             if status_callback:
                 status_callback(msg)
@@ -328,16 +266,10 @@ class GUIHandlers:
             self.add_log(f"Error during reset: {e}", "error")
             return False
     
+
     # ========== Asset Selection Handler ==========
     
     def handle_asset_selection(self, selected_asset: str, all_symbols: list[str]):
-        """
-        Handle asset selection from the assets table.
-        
-        Args:
-            selected_asset: The selected asset name
-            all_symbols: List of all available trading symbols
-        """
         potential_pair = f"{selected_asset}USDT"
         if potential_pair in all_symbols:
             st.session_state["symbol_select"] = potential_pair
