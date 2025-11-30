@@ -314,25 +314,10 @@ class GUIComponents:
         
         if st.sidebar.button("RESET PORTFOLIO (SELL ALL)", disabled=not confirm_reset):
             with st.sidebar.status("Resetting Portfolio...", expanded=True) as status:
-                log_container = st.container()
-                
                 def status_callback(msg):
                     st.write(msg)
                 
-                def log_callback(msg, level):
-                    """Display log messages live within the status widget."""
-                    with log_container:
-                        formatted_msg = f"• {msg}"
-                        if level == 'success':
-                            st.success(formatted_msg)
-                        elif level == 'error':
-                            st.error(formatted_msg)
-                        elif level == 'warning':
-                            st.warning(formatted_msg)
-                        else:
-                            st.info(formatted_msg)
-                
-                success = self.handlers.handle_portfolio_reset(status_callback, log_callback)
+                success = self.handlers.handle_portfolio_reset(status_callback)
                 
                 if success:
                     status.update(label="Reset Complete!", state="complete", expanded=False)
