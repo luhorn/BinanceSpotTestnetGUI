@@ -225,18 +225,18 @@
                         
                         <div class="mb-2">
                             <label for="buy-quantity" class="form-label">Quantity</label>
-                            <input type="number" class="form-control" id="buy-quantity" step="0.0001" min="0">
+                            <input type="number" class="form-control" name="buy-quantity" id="buy-quantity" step="0.0001">
                         </div>
                         
                         <div class="mb-2">
                             <label for="buy-total" class="form-label">Total (USDT)</label>
-                            <input type="number" class="form-control" id="buy-total" step="1" min="0">
+                            <input type="number" class="form-control" name="buy-total" id="buy-total" step="1">
                             <small class="text-muted">If quantity is 0, total will be used</small>
                         </div>
                         
                         <div class="mb-3" id="buy-price-group">
                             <label for="buy-price" class="form-label">Price</label>
-                            <input type="number" class="form-control" id="buy-price" step="0.01" min="0">
+                            <input type="number" class="form-control" name="buy-price" id="buy-price" step="0.01">
                         </div>
                         
                         <button type="submit" class="btn btn-success w-100">
@@ -264,13 +264,13 @@
                                 <label for="sell-quantity" class="form-label mb-0">Quantity</label>
                                 <button type="button" class="btn btn-link btn-sm p-0" onclick="setMaxSellQuantity()">Max</button>
                             </div>
-                            <input type="number" class="form-control" id="sell-quantity" step="0.00000001" min="0">
+                            <input type="number" class="form-control" name="sell-quantity" id="sell-quantity" step="0.00000001">
                             <small class="text-muted" id="available-balance">Available: 0</small>
                         </div>
                         
                         <div class="mb-3" id="sell-price-group">
                             <label for="sell-price" class="form-label">Price</label>
-                            <input type="number" class="form-control" id="sell-price" step="0.01" min="0">
+                            <input type="number" class="form-control" name="sell-price" id="sell-price" step="0.01">
                         </div>
                         
                         <button type="submit" class="btn btn-danger w-100">

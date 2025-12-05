@@ -322,11 +322,15 @@ def api_buy():
         
     except BinanceClientError as e:
         if e.is_notional_error():
-            add_log("Buy Failed: Order value too small (min ~10 USDT).", "error")
-            return jsonify({'success': False, 'error': 'Order value too small (min ~10 USDT)'}), 400
+            error_msg = "Order value too small (min ~10 USDT)"
+        elif e.is_insufficient_balance():
+            error_msg = "Insufficient balance for this order"
+        elif e.is_lot_size_error():
+            error_msg = "Invalid quantity for this symbol"
         else:
-            add_log(f"Buy Order Failed: {e}", "error")
-            return jsonify({'success': False, 'error': str(e)}), 400
+            error_msg = e.get_user_message()
+        add_log(f"Buy Failed: {error_msg}", "error")
+        return jsonify({'success': False, 'error': error_msg}), 400
 
 
 @app.route('/api/sell', methods=['POST'])
@@ -354,31 +358,67 @@ def api_sell():
     
     try:
         is_market = order_type == "MARKET"
+        
+        # Check market lot size constraints for market orders
+        if is_market:
+            max_market_qty = client.get_max_market_lot_size(symbol)
+            if max_market_qty > 0 and quantity > max_market_qty:
+                add_log(f"Sell Warning: Quantity {quantity} exceeds max market lot size {max_market_qty} for {symbol}. Order will be reduced.", "warning")
+        
         adjusted_qty = client.adjust_quantity(symbol, quantity, is_market_order=is_market)
         
         if adjusted_qty <= 0:
-            add_log("Sell Failed: Quantity too small after adjustment.", "error")
+            min_qty = client.get_min_market_lot_size(symbol) if is_market else 0
+            add_log(f"Sell Failed: Quantity too small after adjustment (min: {min_qty}).", "error")
             return jsonify({'success': False, 'error': 'Quantity too small'}), 400
         
-        client.place_order(
+        # Log if quantity was significantly reduced
+        if adjusted_qty < quantity * 0.99:  # More than 1% reduction
+            add_log(f"Sell Info: Quantity adjusted from {quantity} to {adjusted_qty} for {symbol}", "info")
+        
+        result = client.place_order(
             symbol=symbol,
             side="SELL",
             order_type=order_type,
             quantity=adjusted_qty,
             price=price if order_type == "LIMIT" else None
         )
-        add_log(f"Sell Order Placed: {symbol}, Qty: {adjusted_qty}", "success")
+        
+        # Check order status from response
+        order_status = result.get('status', 'UNKNOWN')
+        if order_status == 'FILLED':
+            add_log(f"Sell Order Filled: {symbol}, Qty: {adjusted_qty}", "success")
+        elif order_status == 'NEW':
+            add_log(f"Sell Order Placed (Open): {symbol}, Qty: {adjusted_qty}, Price: {price}", "success")
+        elif order_status == 'PARTIALLY_FILLED':
+            filled_qty = result.get('executedQty', 'unknown')
+            add_log(f"Sell Order Partially Filled: {symbol}, Filled: {filled_qty}/{adjusted_qty}", "success")
+        elif order_status == 'EXPIRED' or order_status == 'EXPIRED_IN_MATCH':
+            add_log(f"Sell Order Expired: {symbol}, Qty: {adjusted_qty} - No matching liquidity", "warning")
+        elif order_status == 'CANCELED':
+            add_log(f"Sell Order Cancelled: {symbol}, Qty: {adjusted_qty}", "warning")
+        else:
+            add_log(f"Sell Order {order_status}: {symbol}, Qty: {adjusted_qty}", "success")
+        
         cache.clear()
-        return jsonify({'success': True})
+        return jsonify({'success': True, 'status': order_status})
         
     except BinanceClientError as e:
         if e.is_notional_error():
-            add_log("Sell Failed: Order value too small (min ~10 USDT).", "error")
+            error_msg = "Order value too small (min ~10 USDT)"
+        elif e.is_insufficient_balance():
+            error_msg = "Insufficient balance for this order"
+        elif e.is_market_lot_size_error():
+            max_qty = client.get_max_market_lot_size(symbol)
+            error_msg = f"Quantity exceeds max market lot size ({max_qty})"
         elif e.is_lot_size_error():
-            add_log(f"Sell Failed: Quantity {quantity} invalid for LOT_SIZE filter.", "error")
+            error_msg = "Invalid quantity for this symbol"
+        elif e.is_liquidity_error():
+            error_msg = "No liquidity available for this order"
         else:
-            add_log(f"Sell Order Failed: {e}", "error")
-        return jsonify({'success': False, 'error': str(e)}), 400
+            error_msg = e.get_user_message()
+        add_log(f"Sell Failed: {error_msg}", "error")
+        return jsonify({'success': False, 'error': error_msg}), 400
 
 
 @app.route('/api/cancel_order', methods=['POST'])

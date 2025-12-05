@@ -285,6 +285,16 @@ class BinanceClientError(Exception):
             error_message=getattr(error, 'error_message', None)
         )
     
+    def get_user_message(self) -> str:
+        """Get a clean, user-friendly error message."""
+        if self.error_message:
+            return self.error_message
+        # Fallback: try to extract message from string representation
+        msg = str(self.args[0]) if self.args else "Unknown error"
+        # If the message is too long (contains headers), truncate it
+        if len(msg) > 200:
+            return msg[:200] + "..."
+        return msg
 
     def is_notional_error(self) -> bool:
         return self.error_code == -1013 and self.error_message and "NOTIONAL" in self.error_message
@@ -300,3 +310,7 @@ class BinanceClientError(Exception):
     
     def is_liquidity_error(self) -> bool:
         return self.error_code == -2010 and self.error_message and "liquidity" in self.error_message.lower()
+    
+    
+    def is_insufficient_balance(self) -> bool:
+        return self.error_code == -2010 and self.error_message and "insufficient balance" in self.error_message.lower()

@@ -28,15 +28,31 @@ document.addEventListener('DOMContentLoaded', function() {
     // Initialize order type toggles
     document.querySelectorAll('input[name="buy-type"]').forEach(radio => {
         radio.addEventListener('change', function() {
-            document.getElementById('buy-price-group').style.display = 
-                this.value === 'MARKET' ? 'none' : 'block';
+            const priceGroup = document.getElementById('buy-price-group');
+            const priceInput = document.getElementById('buy-price');
+            if (this.value === 'MARKET') {
+                priceGroup.style.display = 'none';
+                priceInput.disabled = true;
+                priceInput.removeAttribute('required');
+            } else {
+                priceGroup.style.display = 'block';
+                priceInput.disabled = false;
+            }
         });
     });
     
     document.querySelectorAll('input[name="sell-type"]').forEach(radio => {
         radio.addEventListener('change', function() {
-            document.getElementById('sell-price-group').style.display = 
-                this.value === 'MARKET' ? 'none' : 'block';
+            const priceGroup = document.getElementById('sell-price-group');
+            const priceInput = document.getElementById('sell-price');
+            if (this.value === 'MARKET') {
+                priceGroup.style.display = 'none';
+                priceInput.disabled = true;
+                priceInput.removeAttribute('required');
+            } else {
+                priceGroup.style.display = 'block';
+                priceInput.disabled = false;
+            }
         });
     });
     
@@ -399,11 +415,14 @@ function getStatusBadgeClass(status) {
 
 function placeBuyOrder(event) {
     event.preventDefault();
+    console.log('placeBuyOrder called');
     
     const orderType = document.querySelector('input[name="buy-type"]:checked').value;
     const quantity = parseFloat(document.getElementById('buy-quantity').value) || 0;
     const totalUsdt = parseFloat(document.getElementById('buy-total').value) || 0;
     const price = parseFloat(document.getElementById('buy-price').value) || 0;
+    
+    console.log('Order data:', { orderType, quantity, totalUsdt, price, symbol: currentSymbol });
     
     if (quantity <= 0 && totalUsdt <= 0) {
         showToast('Please enter quantity or total', 'error');
@@ -418,14 +437,36 @@ function placeBuyOrder(event) {
         price: price
     };
     
+    // Show loading state
+    const btn = document.querySelector('#buy-form button[type="submit"]');
+    if (!btn) {
+        console.error('Buy button not found!');
+        showToast('Error: Buy button not found', 'error');
+        return;
+    }
+    const originalText = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Placing...';
+    
+    console.log('Sending request to /api/buy');
+    
     fetch('/api/buy', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data)
     })
-    .then(response => response.json())
-    .then(result => {
-        if (result.success) {
+    .then(response => {
+        console.log('Response received:', response.status, response.ok);
+        // Parse JSON regardless of status code
+        return response.json().then(data => {
+            console.log('Response data:', data);
+            return { ok: response.ok, data };
+        });
+    })
+    .then(({ ok, data }) => {
+        console.log('Processing response:', ok, data);
+        if (ok && data.success) {
+            console.log('Order successful, showing toast');
             showToast('Buy order placed successfully', 'success');
             // Clear form
             document.getElementById('buy-quantity').value = '';
@@ -433,12 +474,19 @@ function placeBuyOrder(event) {
             // Refresh data
             refreshAll();
         } else {
-            showToast(result.error || 'Failed to place order', 'error');
+            console.log('Order failed, showing error toast');
+            showToast(data.error || 'Failed to place order', 'error');
         }
-        refreshActivityLog();
     })
     .catch(err => {
-        showToast('Failed to place order', 'error');
+        console.error('Buy order error:', err);
+        showToast('Failed to place order: ' + err.message, 'error');
+    })
+    .finally(() => {
+        console.log('Request complete, resetting button');
+        btn.disabled = false;
+        btn.innerHTML = originalText;
+        refreshActivityLog();
     });
 }
 
@@ -462,26 +510,40 @@ function placeSellOrder(event) {
         current_price: currentPrice
     };
     
+    // Show loading state
+    const btn = document.querySelector('#sell-form button[type="submit"]');
+    const originalText = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Placing...';
+    
     fetch('/api/sell', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data)
     })
-    .then(response => response.json())
-    .then(result => {
-        if (result.success) {
+    .then(response => {
+        // Parse JSON regardless of status code
+        return response.json().then(data => ({ ok: response.ok, data }));
+    })
+    .then(({ ok, data }) => {
+        if (ok && data.success) {
             showToast('Sell order placed successfully', 'success');
             // Clear form
             document.getElementById('sell-quantity').value = '';
             // Refresh data
             refreshAll();
         } else {
-            showToast(result.error || 'Failed to place order', 'error');
+            showToast(data.error || 'Failed to place order', 'error');
         }
-        refreshActivityLog();
     })
     .catch(err => {
-        showToast('Failed to place order', 'error');
+        console.error('Sell order error:', err);
+        showToast('Failed to place order: ' + err.message, 'error');
+    })
+    .finally(() => {
+        btn.disabled = false;
+        btn.innerHTML = originalText;
+        refreshActivityLog();
     });
 }
 
@@ -551,7 +613,15 @@ function refreshActivityLog() {
 // ========== Toast Notifications ==========
 
 function showToast(message, type = 'info') {
+    console.log('showToast called:', message, type);
     const container = document.getElementById('toast-container');
+    console.log('Toast container:', container);
+    
+    if (!container) {
+        console.error('Toast container not found!');
+        alert(message);  // Fallback to alert
+        return;
+    }
     
     const toastId = 'toast-' + Date.now();
     const bgClass = {
@@ -571,10 +641,20 @@ function showToast(message, type = 'info') {
     `;
     
     container.insertAdjacentHTML('beforeend', toastHtml);
+    console.log('Toast HTML inserted');
     
     const toastEl = document.getElementById(toastId);
+    console.log('Toast element:', toastEl);
+    
+    if (typeof bootstrap === 'undefined') {
+        console.error('Bootstrap not loaded!');
+        alert(message);  // Fallback to alert
+        return;
+    }
+    
     const toast = new bootstrap.Toast(toastEl, { autohide: true, delay: 3000 });
     toast.show();
+    console.log('Toast shown');
     
     // Remove from DOM after hiding
     toastEl.addEventListener('hidden.bs.toast', () => {
