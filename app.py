@@ -7,12 +7,45 @@ Main application entry point using Flask with AJAX-based refreshing.
 from flask import Flask, render_template, jsonify, request
 import time
 import os
+import json
 
 from libs.exchange import BinanceClient
 from libs.exchange.client import BinanceClientError
 
 app = Flask(__name__)
 app.secret_key = os.urandom(24)
+
+# ========== Configuration ==========
+
+CONFIG_PATH = 'resources/config.json'
+
+def load_config() -> dict:
+    """Load configuration from file."""
+    default_config = {
+        'hide_small_assets': False,
+        'hidden_assets': []
+    }
+    try:
+        if os.path.exists(CONFIG_PATH):
+            with open(CONFIG_PATH, 'r') as f:
+                config = json.load(f)
+                # Merge with defaults to ensure all keys exist
+                return {**default_config, **config}
+    except (json.JSONDecodeError, IOError) as e:
+        print(f"Error loading config: {e}")
+    return default_config
+
+
+def save_config(config: dict) -> bool:
+    """Save configuration to file."""
+    try:
+        os.makedirs(os.path.dirname(CONFIG_PATH), exist_ok=True)
+        with open(CONFIG_PATH, 'w') as f:
+            json.dump(config, f, indent=4)
+        return True
+    except IOError as e:
+        print(f"Error saving config: {e}")
+        return False
 
 # Global client instance
 _client = None
@@ -169,17 +202,85 @@ def index():
     if data is None:
         return render_template('error.html', message="Failed to connect to Binance API")
     
+    config = load_config()
+    hidden_assets = config.get('hidden_assets', [])
+    
+    # Filter out hidden assets from the display
+    filtered_assets = [a for a in data['assets'] if a['Asset'] not in hidden_assets]
+    
     return render_template('index.html',
         usdt_balance=format_number(data['usdt_balance']),
         portfolio_value=format_number(data['portfolio_value']),
-        assets=data['assets'],
+        assets=filtered_assets,
         all_symbols=data['all_symbols'],
         prices=data['prices'],
-        format_number=format_number
+        format_number=format_number,
+        config=config
     )
 
 
 # ========== API Routes ==========
+
+@app.route('/api/config', methods=['GET'])
+def api_get_config():
+    """Get current configuration."""
+    return jsonify(load_config())
+
+
+@app.route('/api/config', methods=['POST'])
+def api_save_config():
+    """Save configuration."""
+    data = request.get_json()
+    config = load_config()
+    
+    # Update only the fields that are provided
+    if 'hide_small_assets' in data:
+        config['hide_small_assets'] = bool(data['hide_small_assets'])
+    if 'hidden_assets' in data:
+        config['hidden_assets'] = list(data['hidden_assets'])
+    
+    if save_config(config):
+        add_log("Configuration saved", "success")
+        return jsonify({'success': True, 'config': config})
+    else:
+        return jsonify({'success': False, 'error': 'Failed to save config'}), 500
+
+
+@app.route('/api/config/hide_asset', methods=['POST'])
+def api_hide_asset():
+    """Add an asset to the hidden list."""
+    data = request.get_json()
+    asset = data.get('asset')
+    
+    if not asset:
+        return jsonify({'success': False, 'error': 'Asset name required'}), 400
+    
+    config = load_config()
+    if asset not in config['hidden_assets']:
+        config['hidden_assets'].append(asset)
+        save_config(config)
+        add_log(f"Asset {asset} hidden from overview", "info")
+    
+    return jsonify({'success': True, 'hidden_assets': config['hidden_assets']})
+
+
+@app.route('/api/config/unhide_asset', methods=['POST'])
+def api_unhide_asset():
+    """Remove an asset from the hidden list."""
+    data = request.get_json()
+    asset = data.get('asset')
+    
+    if not asset:
+        return jsonify({'success': False, 'error': 'Asset name required'}), 400
+    
+    config = load_config()
+    if asset in config['hidden_assets']:
+        config['hidden_assets'].remove(asset)
+        save_config(config)
+        add_log(f"Asset {asset} restored to overview", "info")
+    
+    return jsonify({'success': True, 'hidden_assets': config['hidden_assets']})
+
 
 @app.route('/api/refresh')
 def api_refresh():
@@ -190,9 +291,14 @@ def api_refresh():
     if data is None:
         return jsonify({'error': 'Failed to fetch data'}), 500
     
-    # Format asset data for JSON
+    config = load_config()
+    hidden_assets = config.get('hidden_assets', [])
+    
+    # Format asset data for JSON, excluding hidden assets
     formatted_assets = []
     for asset in data['assets']:
+        if asset['Asset'] in hidden_assets:
+            continue
         formatted_assets.append({
             'Asset': asset['Asset'],
             'Free': format_number(asset['Free']),
@@ -206,7 +312,8 @@ def api_refresh():
         'usdt_balance': format_number(data['usdt_balance']),
         'portfolio_value': format_number(data['portfolio_value']),
         'assets': formatted_assets,
-        'all_symbols': data['all_symbols']
+        'all_symbols': data['all_symbols'],
+        'config': config
     })
 
 
@@ -234,11 +341,23 @@ def api_order_history(symbol):
     """Get order history for a symbol."""
     orders = get_all_orders(symbol)
     
-    # Format timestamps
+    # Format timestamps and price
     for order in orders:
         if 'time' in order:
             order['time_formatted'] = time.strftime('%Y-%m-%d %H:%M:%S', 
                 time.localtime(order['time'] / 1000))
+        
+        # Format price - convert from string to float with 4 decimal places
+        # For market orders that filled, price may be "0", so calculate from fills
+        price = float(order.get('price', 0))
+        if price == 0 and order.get('executedQty', 0) and float(order.get('executedQty', 0)) > 0:
+            # For filled orders with price 0, try to get average price from cummulativeQuoteQty
+            cumulative_quote = float(order.get('cummulativeQuoteQty', 0))
+            executed_qty = float(order.get('executedQty', 0))
+            if executed_qty > 0:
+                price = cumulative_quote / executed_qty
+        
+        order['price'] = f"{price:.4f}"
     
     return jsonify({'orders': orders})
 

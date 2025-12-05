@@ -1,5 +1,7 @@
 # user specific files
 resources/secrets.json
+resources/config.json
+.github
 
 
 # Byte-compiled / optimized / DLL files

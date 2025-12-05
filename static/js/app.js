@@ -64,10 +64,17 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
     
-    // Initialize hide small assets checkbox
+    // Initialize hide small assets checkbox from config
     const hideSmall = document.getElementById('hide-small-assets');
     if (hideSmall) {
-        hideSmall.addEventListener('change', filterAssetTable);
+        hideSmall.addEventListener('change', function() {
+            filterAssetTable();
+            saveConfig({ hide_small_assets: this.checked });
+        });
+        // Apply filter on page load if checkbox is checked
+        if (hideSmall.checked) {
+            filterAssetTable();
+        }
     }
     
     // Load initial data
@@ -77,6 +84,67 @@ document.addEventListener('DOMContentLoaded', function() {
     // Start auto-refresh (every 30 seconds)
     startAutoRefresh();
 });
+
+// ========== Configuration Management ==========
+
+function saveConfig(configUpdates) {
+    fetch('/api/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(configUpdates)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            window.appConfig = data.config;
+        }
+    })
+    .catch(err => console.error('Error saving config:', err));
+}
+
+function hideAsset(asset) {
+    fetch('/api/config/hide_asset', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ asset: asset })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showToast(`Asset ${asset} hidden from overview`, 'info');
+            // Reload page to update the view
+            window.location.reload();
+        } else {
+            showToast(data.error || 'Failed to hide asset', 'error');
+        }
+    })
+    .catch(err => {
+        console.error('Error hiding asset:', err);
+        showToast('Failed to hide asset', 'error');
+    });
+}
+
+function unhideAsset(asset) {
+    fetch('/api/config/unhide_asset', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ asset: asset })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showToast(`Asset ${asset} restored to overview`, 'info');
+            // Reload page to update the view
+            window.location.reload();
+        } else {
+            showToast(data.error || 'Failed to unhide asset', 'error');
+        }
+    })
+    .catch(err => {
+        console.error('Error unhiding asset:', err);
+        showToast('Failed to unhide asset', 'error');
+    });
+}
 
 // ========== Auto Refresh ==========
 
@@ -266,7 +334,8 @@ function updateAssetsTable(assets) {
             <td>${asset.Value}</td>
             <td>
                 ${asset.Asset !== 'USDT' ? 
-                    `<button class="btn btn-sm btn-outline-primary" onclick="selectAsset('${asset.Asset}')">Trade</button>` 
+                    `<button class="btn btn-sm btn-outline-primary me-1" onclick="selectAsset('${asset.Asset}')">Trade</button>
+                     <button class="btn btn-sm btn-outline-secondary" onclick="hideAsset('${asset.Asset}')" title="Hide from overview"><i class="bi bi-eye-slash"></i></button>` 
                     : ''}
             </td>
         `;
