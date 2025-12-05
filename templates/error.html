@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="col-12">
+    <div class="alert alert-danger" role="alert">
+        <h4 class="alert-heading"><i class="bi bi-exclamation-triangle"></i> Error</h4>
+        <p>{{ message }}</p>
+        <hr>
+        <p class="mb-0">Please check your API credentials in <code>resources/secrets.json</code> and try again.</p>
+        <a href="/" class="btn btn-outline-danger mt-3">
+            <i class="bi bi-arrow-clockwise"></i> Retry
+        </a>
+    </div>
+</div>
+{% endblock %}

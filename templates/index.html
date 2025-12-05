@@ -1,0 +1,324 @@
+{% extends "base.html" %}
+
+{% block content %}
+<!-- Main Content -->
+<div class="col-lg-9 col-md-8">
+    <!-- Portfolio Summary -->
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <div class="card bg-primary text-white">
+                <div class="card-body">
+                    <h6 class="card-subtitle mb-2">Cash (USDT)</h6>
+                    <h3 class="card-title" id="usdt-balance">{{ usdt_balance }}</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card bg-success text-white">
+                <div class="card-body">
+                    <h6 class="card-subtitle mb-2">Total Portfolio Value (USDT)</h6>
+                    <h3 class="card-title" id="portfolio-value">{{ portfolio_value }}</h3>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Assets Table -->
+    <div class="card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">Assets</h5>
+            <div>
+                <div class="form-check form-check-inline">
+                    <input class="form-check-input" type="checkbox" id="hide-small-assets">
+                    <label class="form-check-label" for="hide-small-assets">Hide assets &lt; 10 USDT</label>
+                </div>
+                <button class="btn btn-sm btn-outline-primary" onclick="refreshAll()">
+                    <i class="bi bi-arrow-clockwise"></i>
+                </button>
+            </div>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-hover" id="assets-table">
+                    <thead>
+                        <tr>
+                            <th>Asset</th>
+                            <th>Free</th>
+                            <th>Locked</th>
+                            <th>Total</th>
+                            <th>Value (USDT)</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for asset in assets %}
+                        <tr data-asset="{{ asset.Asset }}" data-value="{{ asset['Value (USDT)'] }}">
+                            <td><strong>{{ asset.Asset }}</strong></td>
+                            <td>{{ format_number(asset.Free) }}</td>
+                            <td>{{ format_number(asset.Locked) }}</td>
+                            <td>{{ format_number(asset.Total) }}</td>
+                            <td>{{ format_number(asset['Value (USDT)']) }}</td>
+                            <td>
+                                {% if asset.Asset != 'USDT' %}
+                                <button class="btn btn-sm btn-outline-primary" onclick="selectAsset('{{ asset.Asset }}')">
+                                    Trade
+                                </button>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Open Orders -->
+    <div class="card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">Open Orders</h5>
+            <button class="btn btn-sm btn-outline-primary" onclick="refreshOpenOrders()">
+                <i class="bi bi-arrow-clockwise"></i>
+            </button>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-sm" id="open-orders-table">
+                    <thead>
+                        <tr>
+                            <th>Symbol</th>
+                            <th>Order ID</th>
+                            <th>Side</th>
+                            <th>Type</th>
+                            <th>Price</th>
+                            <th>Quantity</th>
+                            <th>Executed</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <!-- Populated via JavaScript -->
+                    </tbody>
+                </table>
+                <p id="no-open-orders" class="text-muted">No open orders.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Order History -->
+    <div class="card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">Order History</h5>
+            <div>
+                <select class="form-select form-select-sm d-inline-block w-auto" id="history-symbol">
+                    <option value="">Select symbol...</option>
+                    {% for symbol in all_symbols %}
+                    <option value="{{ symbol }}">{{ symbol }}</option>
+                    {% endfor %}
+                </select>
+                <button class="btn btn-sm btn-outline-primary" onclick="loadOrderHistory()">
+                    Load
+                </button>
+            </div>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-sm" id="order-history-table">
+                    <thead>
+                        <tr>
+                            <th>Time</th>
+                            <th>Symbol</th>
+                            <th>Side</th>
+                            <th>Type</th>
+                            <th>Status</th>
+                            <th>Price</th>
+                            <th>Quantity</th>
+                            <th>Executed</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <!-- Populated via JavaScript -->
+                    </tbody>
+                </table>
+                <p id="no-order-history" class="text-muted">Select a symbol to view order history.</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Sidebar -->
+<div class="col-lg-3 col-md-4">
+    <!-- Trading Panel -->
+    <div class="card mb-4">
+        <div class="card-header">
+            <h5 class="mb-0"><i class="bi bi-graph-up"></i> Trade</h5>
+        </div>
+        <div class="card-body">
+            <!-- Symbol Selector -->
+            <div class="mb-3">
+                <label class="form-label">Symbol Filters</label>
+                <div class="btn-group flex-wrap" role="group">
+                    <input type="checkbox" class="btn-check" id="filter-usdt" checked>
+                    <label class="btn btn-outline-primary btn-sm" for="filter-usdt">USDT</label>
+                    
+                    <input type="checkbox" class="btn-check" id="filter-btc">
+                    <label class="btn btn-outline-primary btn-sm" for="filter-btc">BTC</label>
+                    
+                    <input type="checkbox" class="btn-check" id="filter-bnb">
+                    <label class="btn btn-outline-primary btn-sm" for="filter-bnb">BNB</label>
+                    
+                    <input type="checkbox" class="btn-check" id="filter-eth">
+                    <label class="btn btn-outline-primary btn-sm" for="filter-eth">ETH</label>
+                </div>
+            </div>
+            
+            <div class="mb-3">
+                <label for="symbol-select" class="form-label">Symbol</label>
+                <select class="form-select" id="symbol-select">
+                    {% for symbol in all_symbols %}
+                    {% if symbol.endswith('USDT') %}
+                    <option value="{{ symbol }}" {% if symbol == 'BTCUSDT' %}selected{% endif %}>{{ symbol }}</option>
+                    {% endif %}
+                    {% endfor %}
+                </select>
+            </div>
+            
+            <div class="mb-3">
+                <label class="form-label">Current Price</label>
+                <div class="input-group">
+                    <span class="input-group-text">$</span>
+                    <input type="text" class="form-control" id="current-price" readonly>
+                    <button class="btn btn-outline-secondary" type="button" onclick="refreshPrice()">
+                        <i class="bi bi-arrow-clockwise"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Tabs for Buy/Sell -->
+            <ul class="nav nav-tabs" role="tablist">
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link active" id="buy-tab" data-bs-toggle="tab" data-bs-target="#buy-panel" type="button">
+                        <i class="bi bi-arrow-down-circle text-success"></i> Buy
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="sell-tab" data-bs-toggle="tab" data-bs-target="#sell-panel" type="button">
+                        <i class="bi bi-arrow-up-circle text-danger"></i> Sell
+                    </button>
+                </li>
+            </ul>
+            
+            <div class="tab-content mt-3">
+                <!-- Buy Panel -->
+                <div class="tab-pane fade show active" id="buy-panel">
+                    <form id="buy-form" onsubmit="placeBuyOrder(event)">
+                        <div class="mb-2">
+                            <label class="form-label">Order Type</label>
+                            <div class="btn-group w-100" role="group">
+                                <input type="radio" class="btn-check" name="buy-type" id="buy-limit" value="LIMIT" checked>
+                                <label class="btn btn-outline-success" for="buy-limit">Limit</label>
+                                
+                                <input type="radio" class="btn-check" name="buy-type" id="buy-market" value="MARKET">
+                                <label class="btn btn-outline-success" for="buy-market">Market</label>
+                            </div>
+                        </div>
+                        
+                        <div class="mb-2">
+                            <label for="buy-quantity" class="form-label">Quantity</label>
+                            <input type="number" class="form-control" id="buy-quantity" step="0.0001" min="0">
+                        </div>
+                        
+                        <div class="mb-2">
+                            <label for="buy-total" class="form-label">Total (USDT)</label>
+                            <input type="number" class="form-control" id="buy-total" step="1" min="0">
+                            <small class="text-muted">If quantity is 0, total will be used</small>
+                        </div>
+                        
+                        <div class="mb-3" id="buy-price-group">
+                            <label for="buy-price" class="form-label">Price</label>
+                            <input type="number" class="form-control" id="buy-price" step="0.01" min="0">
+                        </div>
+                        
+                        <button type="submit" class="btn btn-success w-100">
+                            <i class="bi bi-cart-plus"></i> Place Buy Order
+                        </button>
+                    </form>
+                </div>
+                
+                <!-- Sell Panel -->
+                <div class="tab-pane fade" id="sell-panel">
+                    <form id="sell-form" onsubmit="placeSellOrder(event)">
+                        <div class="mb-2">
+                            <label class="form-label">Order Type</label>
+                            <div class="btn-group w-100" role="group">
+                                <input type="radio" class="btn-check" name="sell-type" id="sell-limit" value="LIMIT" checked>
+                                <label class="btn btn-outline-danger" for="sell-limit">Limit</label>
+                                
+                                <input type="radio" class="btn-check" name="sell-type" id="sell-market" value="MARKET">
+                                <label class="btn btn-outline-danger" for="sell-market">Market</label>
+                            </div>
+                        </div>
+                        
+                        <div class="mb-2">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <label for="sell-quantity" class="form-label mb-0">Quantity</label>
+                                <button type="button" class="btn btn-link btn-sm p-0" onclick="setMaxSellQuantity()">Max</button>
+                            </div>
+                            <input type="number" class="form-control" id="sell-quantity" step="0.00000001" min="0">
+                            <small class="text-muted" id="available-balance">Available: 0</small>
+                        </div>
+                        
+                        <div class="mb-3" id="sell-price-group">
+                            <label for="sell-price" class="form-label">Price</label>
+                            <input type="number" class="form-control" id="sell-price" step="0.01" min="0">
+                        </div>
+                        
+                        <button type="submit" class="btn btn-danger w-100">
+                            <i class="bi bi-cart-dash"></i> Place Sell Order
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Danger Zone -->
+    <div class="card border-danger mb-4">
+        <div class="card-header bg-danger text-white">
+            <h5 class="mb-0"><i class="bi bi-exclamation-triangle"></i> Danger Zone</h5>
+        </div>
+        <div class="card-body">
+            <div class="form-check mb-3">
+                <input class="form-check-input" type="checkbox" id="confirm-reset">
+                <label class="form-check-label small" for="confirm-reset">
+                    I understand this will sell ALL assets and cancel ALL orders.
+                </label>
+            </div>
+            <button class="btn btn-danger w-100" id="reset-btn" onclick="resetPortfolio()" disabled>
+                <i class="bi bi-trash"></i> RESET PORTFOLIO
+            </button>
+        </div>
+    </div>
+
+    <!-- Activity Log -->
+    <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0"><i class="bi bi-journal-text"></i> Activity Log</h5>
+            <button class="btn btn-sm btn-outline-secondary" onclick="refreshActivityLog()">
+                <i class="bi bi-arrow-clockwise"></i>
+            </button>
+        </div>
+        <div class="card-body p-0">
+            <div id="activity-log" class="activity-log-container">
+                <!-- Populated via JavaScript -->
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Store all symbols for JavaScript -->
+<script>
+    window.allSymbols = {{ all_symbols | tojson }};
+    window.prices = {{ prices | tojson }};
+</script>
+{% endblock %}

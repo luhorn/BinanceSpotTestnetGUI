@@ -1,3 +1,2 @@
-streamlit
+flask
 binance-connector
-pandas
