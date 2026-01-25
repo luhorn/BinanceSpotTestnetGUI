@@ -23,6 +23,52 @@
         </div>
     </div>
 
+    <!-- Portfolio Value Chart -->
+    <div class="card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <h5 class="mb-0"><i class="bi bi-graph-up-arrow"></i> Portfolio Value Over Time</h5>
+            <div class="d-flex align-items-center gap-2 flex-wrap">
+                <!-- Log Scale Toggle -->
+                <div class="form-check form-check-inline mb-0">
+                    <input class="form-check-input" type="checkbox" id="log-scale-toggle">
+                    <label class="form-check-label small" for="log-scale-toggle">Log₂ Scale</label>
+                </div>
+                
+                <!-- Time Range Buttons -->
+                <div class="btn-group btn-group-sm" role="group" id="time-range-buttons">
+                    <input type="radio" class="btn-check" name="time-range" id="range-1d" value="1d" autocomplete="off">
+                    <label class="btn btn-outline-primary" for="range-1d">1D</label>
+                    
+                    <input type="radio" class="btn-check" name="time-range" id="range-1w" value="1w" autocomplete="off" checked>
+                    <label class="btn btn-outline-primary" for="range-1w">1W</label>
+                    
+                    <input type="radio" class="btn-check" name="time-range" id="range-1m" value="1m" autocomplete="off">
+                    <label class="btn btn-outline-primary" for="range-1m">1M</label>
+                    
+                    <input type="radio" class="btn-check" name="time-range" id="range-6m" value="6m" autocomplete="off">
+                    <label class="btn btn-outline-primary" for="range-6m">6M</label>
+                    
+                    <input type="radio" class="btn-check" name="time-range" id="range-1y" value="1y" autocomplete="off">
+                    <label class="btn btn-outline-primary" for="range-1y">1Y</label>
+                    
+                    <input type="radio" class="btn-check" name="time-range" id="range-ytd" value="ytd" autocomplete="off">
+                    <label class="btn btn-outline-primary" for="range-ytd">YTD</label>
+                    
+                    <input type="radio" class="btn-check" name="time-range" id="range-all" value="all" autocomplete="off">
+                    <label class="btn btn-outline-primary" for="range-all">All</label>
+                </div>
+            </div>
+        </div>
+        <div class="card-body">
+            <div class="chart-container" style="position: relative; height: 300px;">
+                <canvas id="portfolio-chart"></canvas>
+            </div>
+            <div id="chart-stats" class="mt-3 text-center">
+                <span class="text-muted small" id="chart-loading">Loading chart data...</span>
+            </div>
+        </div>
+    </div>
+
     <!-- Assets Table -->
     <div class="card mb-4">
         <div class="card-header d-flex justify-content-between align-items-center">

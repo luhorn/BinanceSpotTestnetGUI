@@ -68,6 +68,81 @@ class BinanceClient:
         prices = self.get_all_prices()
         return prices.get(symbol, 0.0)
     
+    # ========== Historical Price Operations ==========
+    
+    def get_klines(self, symbol: str, interval: str, start_time: int = None,
+                   end_time: int = None, limit: int = 1000) -> list[dict]:
+        """
+        Get historical candlestick data (klines).
+        
+        Args:
+            symbol: Trading pair (e.g., 'BTCUSDT')
+            interval: Kline interval (1m, 5m, 15m, 1h, 4h, 1d, etc.)
+            start_time: Start time in milliseconds
+            end_time: End time in milliseconds
+            limit: Number of klines to return (max 1000)
+        
+        Returns:
+            List of klines with OHLCV data
+        """
+        try:
+            params = {"symbol": symbol, "interval": interval}
+            if start_time:
+                params["startTime"] = start_time
+            if end_time:
+                params["endTime"] = end_time
+            if limit:
+                params["limit"] = limit
+            
+            klines = self._client.klines(**params)
+            # Parse klines: [open_time, open, high, low, close, volume, ...]
+            return [{
+                "timestamp": k[0] // 1000,  # Convert ms to seconds
+                "open": float(k[1]),
+                "high": float(k[2]),
+                "low": float(k[3]),
+                "close": float(k[4]),
+                "volume": float(k[5])
+            } for k in klines]
+        except ClientError as e:
+            raise BinanceClientError(f"Error fetching klines: {e}")
+    
+    def get_historical_prices(self, symbols: list[str], timestamp: int) -> dict[str, float]:
+        """
+        Get historical prices for multiple symbols at a specific timestamp.
+        
+        Uses 1h klines and returns the close price of the candle containing the timestamp.
+        
+        Args:
+            symbols: List of trading pairs (e.g., ['BTCUSDT', 'ETHUSDT'])
+            timestamp: Unix timestamp in seconds
+        
+        Returns:
+            Dict mapping symbol to price
+        """
+        prices = {}
+        timestamp_ms = timestamp * 1000
+        
+        for symbol in symbols:
+            try:
+                # Get kline containing the timestamp (look back 1 hour)
+                klines = self.get_klines(
+                    symbol=symbol,
+                    interval="1h",
+                    start_time=timestamp_ms - 3600000,  # 1 hour before
+                    end_time=timestamp_ms + 3600000,    # 1 hour after
+                    limit=3
+                )
+                if klines:
+                    # Find the closest kline to the requested timestamp
+                    closest = min(klines, key=lambda k: abs(k['timestamp'] - timestamp))
+                    prices[symbol] = closest['close']
+            except BinanceClientError:
+                # Skip symbols that fail (e.g., invalid or delisted)
+                continue
+        
+        return prices
+    
     # ========== Exchange Info ==========
     
     def get_exchange_info(self, use_cache: bool = True) -> dict:
