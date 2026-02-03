@@ -8,11 +8,9 @@ from flask import Flask, render_template, jsonify, request
 import time
 import os
 import json
-from datetime import datetime
 
 from libs.exchange import BinanceClient
 from libs.exchange.client import BinanceClientError
-from libs.portfolio import PortfolioHistory
 
 app = Flask(__name__)
 app.secret_key = os.urandom(24)
@@ -58,12 +56,6 @@ def get_client() -> BinanceClient:
     if _client is None:
         _client = BinanceClient()
     return _client
-
-
-# ========== Portfolio History ==========
-
-PORTFOLIO_HISTORY_PATH = 'resources/portfolio_history.json'
-portfolio_history = PortfolioHistory(data_file=PORTFOLIO_HISTORY_PATH)
 
 
 # ========== Cache with TTL ==========
@@ -201,81 +193,6 @@ def calculate_portfolio_data():
     }
 
 
-def save_portfolio_snapshot(force: bool = False) -> bool:
-    """
-    Save current portfolio state to history.
-    
-    Args:
-        force: Force save even if recent snapshot exists
-    
-    Returns:
-        True if snapshot was saved
-    """
-    data = calculate_portfolio_data()
-    if not data or data['portfolio_value'] <= 0:
-        return False
-    
-    # Extract asset details for backfilling
-    asset_details = {}
-    for asset in data['assets']:
-        symbol = asset['Asset']
-        asset_details[symbol] = {
-            'quantity': asset['Total'],
-            'value_usdt': asset['Value (USDT)']
-        }
-    
-    success = portfolio_history.add_snapshot(
-        timestamp=time.time(),
-        total_value=data['portfolio_value'],
-        usdt_balance=data['usdt_balance'],
-        asset_count=len(data['assets']),
-        assets_detail=asset_details
-    )
-    
-    if success:
-        # Update current holdings for future backfilling
-        holdings = {asset['Asset']: asset['Total'] for asset in data['assets']}
-        portfolio_history.update_current_holdings(holdings)
-    
-    return success
-
-
-def backfill_portfolio_history(time_range: str) -> int:
-    """
-    Backfill missing historical data for the requested time range.
-    
-    Args:
-        time_range: One of '1d', '1w', '1m', '6m', '1y', 'ytd', 'all'
-    
-    Returns:
-        Number of snapshots added
-    """
-    # Ensure portfolio_history has the client
-    portfolio_history.set_client(get_client())
-    
-    # Get current asset holdings
-    data = calculate_portfolio_data()
-    if not data:
-        return 0
-    
-    current_assets = {asset['Asset']: asset['Total'] for asset in data['assets']}
-    
-    # Calculate time range
-    now = time.time()
-    start_time = portfolio_history.get_range_start_time(time_range)
-    
-    # Get appropriate interval for the range
-    interval = portfolio_history.get_interval_for_range(time_range)
-    
-    # Backfill
-    return portfolio_history.backfill_history(
-        current_assets=current_assets,
-        start_time=start_time,
-        end_time=now,
-        interval=interval
-    )
-
-
 # ========== Page Routes ==========
 
 @app.route('/')
@@ -374,12 +291,6 @@ def api_refresh():
     if data is None:
         return jsonify({'error': 'Failed to fetch data'}), 500
     
-    # Save portfolio snapshot on refresh
-    try:
-        save_portfolio_snapshot()
-    except Exception as e:
-        print(f"Warning: Failed to save portfolio snapshot: {e}")
-    
     config = load_config()
     hidden_assets = config.get('hidden_assets', [])
     
@@ -455,69 +366,6 @@ def api_order_history(symbol):
 def api_activity_log():
     """Get activity log entries."""
     return jsonify({'log': activity_log})
-
-
-@app.route('/api/portfolio_history')
-def api_portfolio_history():
-    """
-    Get portfolio history for a time range.
-    
-    Query params:
-        range: Time range (1d, 1w, 1m, 6m, 1y, ytd, all). Default: 1w
-        backfill: Enable historical backfilling (true/false). Default: true
-    """
-    time_range = request.args.get('range', '1w')
-    enable_backfill = request.args.get('backfill', 'true').lower() == 'true'
-    
-    # Ensure the client is set for backfilling
-    portfolio_history.set_client(get_client())
-    
-    # Backfill missing data if requested and needed
-    if enable_backfill and portfolio_history.should_backfill(time_range):
-        try:
-            added = backfill_portfolio_history(time_range)
-            if added > 0:
-                add_log(f"Backfilled {added} historical data points", "info")
-        except Exception as e:
-            add_log(f"Backfill failed: {e}", "warning")
-    
-    # Get data for the requested range
-    start_time = portfolio_history.get_range_start_time(time_range)
-    end_time = time.time()
-    
-    snapshots = portfolio_history.get_history(start_time, end_time)
-    
-    # Calculate statistics
-    stats = portfolio_history.calculate_stats(snapshots)
-    
-    # Format data for chart (timestamp, value pairs)
-    chart_data = [
-        {'timestamp': s['timestamp'], 'value': s['total_value']}
-        for s in snapshots
-    ]
-    
-    return jsonify({
-        'success': True,
-        'range': time_range,
-        'data': chart_data,
-        'stats': stats,
-        'total_points': len(chart_data)
-    })
-
-
-@app.route('/api/portfolio_snapshot', methods=['POST'])
-def api_save_snapshot():
-    """Manually trigger a portfolio snapshot save."""
-    try:
-        success = save_portfolio_snapshot(force=True)
-        if success:
-            add_log("Portfolio snapshot saved", "success")
-            return jsonify({'success': True, 'message': 'Snapshot saved'})
-        else:
-            return jsonify({'success': False, 'message': 'Snapshot skipped (too recent)'})
-    except Exception as e:
-        add_log(f"Failed to save snapshot: {e}", "error")
-        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 @app.route('/api/buy', methods=['POST'])

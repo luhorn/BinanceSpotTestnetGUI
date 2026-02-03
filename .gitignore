@@ -1,7 +1,6 @@
 # user specific files
 resources/secrets.json
 resources/config.json
-resources/portfolio_history.json
 .github
 
 

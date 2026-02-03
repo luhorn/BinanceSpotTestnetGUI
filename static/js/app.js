@@ -77,13 +77,6 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
     
-    // Initialize portfolio chart
-    if (typeof initPortfolioChart === 'function') {
-        initPortfolioChart();
-        setupChartEventListeners();
-        loadPortfolioHistory('1w');  // Default to 1 week
-    }
-    
     // Load initial data
     refreshOpenOrders();
     refreshActivityLog();
@@ -315,11 +308,6 @@ function refreshAll() {
             // Refresh other components
             refreshOpenOrders();
             refreshActivityLog();
-            
-            // Refresh portfolio chart
-            if (typeof refreshPortfolioChart === 'function') {
-                refreshPortfolioChart();
-            }
             
             showToast('Data refreshed', 'success');
         })
