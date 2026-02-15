@@ -7,7 +7,7 @@ This module provides a wrapper around the Binance Spot API for testnet operation
 import json
 from decimal import Decimal
 from binance.spot import Spot
-from binance.error import ClientError
+from binance.error import ClientError, ServerError
 
 
 def load_secrets(path: str = 'resources/secrets.json') -> dict:
@@ -40,6 +40,8 @@ class BinanceClient:
             return self._client.account()
         except ClientError as e:
             raise BinanceClientError(f"Error fetching account info: {e}")
+        except (ServerError, Exception) as e:
+            raise BinanceClientError(f"Error fetching account info: {e}")
     
 
     def get_balances(self, non_zero_only: bool = True) -> list[dict]:
@@ -62,6 +64,8 @@ class BinanceClient:
             return {t['symbol']: float(t['price']) for t in ticker}
         except ClientError as e:
             raise BinanceClientError(f"Error fetching prices: {e}")
+        except (ServerError, Exception) as e:
+            raise BinanceClientError(f"Error fetching prices: {e}")
     
 
     def get_price(self, symbol: str) -> float:
@@ -78,6 +82,8 @@ class BinanceClient:
             self._exchange_info_cache = self._client.exchange_info()
             return self._exchange_info_cache
         except ClientError as e:
+            raise BinanceClientError(f"Error fetching exchange info: {e}")
+        except (ServerError, Exception) as e:
             raise BinanceClientError(f"Error fetching exchange info: {e}")
     
 
@@ -188,6 +194,8 @@ class BinanceClient:
         try:
             return self._client.get_open_orders(symbol=symbol)
         except ClientError as e:
+            raise BinanceClientError(f"Error fetching open orders: {e}")
+        except (ServerError, Exception) as e:
             raise BinanceClientError(f"Error fetching open orders: {e}")
     
 

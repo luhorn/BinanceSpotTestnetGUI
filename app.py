@@ -200,7 +200,16 @@ def index():
     """Main dashboard page."""
     data = calculate_portfolio_data()
     if data is None:
-        return render_template('error.html', message="Failed to connect to Binance API")
+        # Render dashboard with empty data instead of error page
+        # JavaScript auto-refresh will populate data once API is available
+        add_log("Initial data fetch failed - click Refresh to retry", "warning")
+        data = {
+            'usdt_balance': 0,
+            'portfolio_value': 0,
+            'assets': [],
+            'all_symbols': [],
+            'prices': {}
+        }
     
     config = load_config()
     hidden_assets = config.get('hidden_assets', [])

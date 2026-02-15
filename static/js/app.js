@@ -81,6 +81,12 @@ document.addEventListener('DOMContentLoaded', function() {
     refreshOpenOrders();
     refreshActivityLog();
     
+    // If dashboard loaded with empty data (API was down), auto-refresh immediately
+    const portfolioValue = document.getElementById('portfolio-value');
+    if (portfolioValue && portfolioValue.textContent.trim() === '0,00') {
+        refreshAll();
+    }
+    
     // Start auto-refresh (every 30 seconds)
     startAutoRefresh();
 });
