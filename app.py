@@ -9,8 +9,7 @@ import time
 import os
 import json
 
-from libs.exchange import BinanceClient
-from libs.exchange.client import BinanceClientError
+from libs.exchange import BinanceClient, BinanceClientError
 
 app = Flask(__name__)
 app.secret_key = os.urandom(24)

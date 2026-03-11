@@ -7,8 +7,7 @@ These are separated from the GUI components to allow for clear separation of con
 
 import time
 import streamlit as st
-from libs.exchange import BinanceClient
-from libs.exchange.client import BinanceClientError
+from libs.exchange import BinanceClient, BinanceClientError
 
 
 class GUIHandlers:
